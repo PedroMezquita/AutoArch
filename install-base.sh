@@ -136,8 +136,8 @@ if [ $SWAP_PARTITION_FLAG ]; then
     swapon $disk$SWAP_PARTITION_COUNT
     echo "Swap partition $disk$SWAP_PARTITION_COUNT in swapon"
 fi
-echo "[Installing base firmware]"
-pacstrap -K /mnt base linux linux-firmware
+echo "[Installing base firmware and Network Manager]"
+pacstrap -K /mnt base linux linux-firmware $NETWORKMGR ${PACKAGES[@]}
 echo "[Configure the System]"
 
 echo "Generating fstab..."
@@ -158,15 +158,16 @@ echo "KEYMAP=$KEYMAP" > /mnt/etc/vconsole.conf
 echo "Creating hostname..."
 echo "$HOSTNAME" > /mnt/etc/hostname
 
-echo "Installing network manager.."
-arch-chroot /mnt pacman -Syu $NETWORKMGR --noconfirm
-
 echo "[Initramfs]"
 echo "Launching mkinitcpio..."
 arch-chroot /mnt mkinitcpio -P
 
-echo "Create root password"
-arch-chroot /mnt echo "123" | passwd --stdin
+echo "Creating user..."
+arch-chroot /mnt useradd -m -G wheel -s /bin/bash $ADMIN_USERNAME
+echo "Setting the password for user $ADMIN_USERNAME..."
+arch-chroot /mnt passwd $ADMIN_USERNAME
+echo "Adding wheel group to sudoers.."
+echo "%wheel      ALL=(ALL:ALL) ALL" >> /mnt/etc/sudoers
 
 # Could be a good idea to add different boot loaders
 if [[ "$MODE" == "UEFI" && $BOOT_PARTITION_FLAG ]] ; then
@@ -176,6 +177,4 @@ if [[ "$MODE" == "UEFI" && $BOOT_PARTITION_FLAG ]] ; then
     arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
 fi
 
-arch-chroot /mnt pacman -Syu --noconfirm fastfetch
-sync
 reboot
