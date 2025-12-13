@@ -77,71 +77,72 @@ elif lsblk | grep "sdb"; then
     disk="/dev/$(ls /dev | grep sdb)"
 fi
 echo "[Detected drive: $disk]"
-partition_count=0
 # EFI Boot partition
-if [ "$TABLE" == "GPT" ]; then
-    (echo g; echo w) | fdisk $disk
-fi
-
+# Uses sgdisk, only works in UEFI, maybe sfdisk for non-UEFI partitions
 if [[ "$MODE" == "UEFI" && $BOOT_PARTITION_FLAG ]] ; then
-    (echo n; echo; echo; echo ${BOOT_PARTITION[2]}; echo t; echo uefi; echo w) | fdisk $disk
-    let partition_count++
-    BOOT_PARTITION_COUNT=$partition_count
-    echo "[Formatting Boot Partition $disk$partition_count]"
-    ${BOOT_PARTITION[1]} $disk$partition_count
+#    (echo n; echo; echo; echo ${BOOT_PARTITION[2]}; echo t; echo uefi; echo w) | fdisk $disk
+    sgdisk -n 1::${BOOT_PARTITION[2]} -t 1:ef00 $disk
+    echo "[Formatting Boot Partition $disk'1']"
+    ${BOOT_PARTITION[1]} $disk'1'
 fi
 
 # # Swap Partition
 if [ $SWAP_PARTITION_FLAG ]; then
-    (echo n; echo; echo; echo ${SWAP_PARTITION[2]}; echo t; echo; echo swap; echo w) | fdisk $disk
-    let partition_count++
-    SWAP_PARTITION_COUNT=$partition_count
-    echo "[Formatting Swap Partition $disk$partition_count]"
-    ${SWAP_PARTITION[1]} $disk$partition_count
+#    (echo n; echo; echo; echo ${SWAP_PARTITION[2]}; echo t; echo; echo swap; echo w) | fdisk $disk
+    sgdisk -n 2::${SWAP_PARTITION[2]} -t 2:8200 $disk
+    echo "[Formatting Swap Partition $disk'2']"
+    ${SWAP_PARTITION[1]} $disk'2'
 fi
 # Root Partition
 if [ $ROOT_PARTITION_FLAG ]; then
-    (echo n; echo; echo; echo ${ROOT_PARTITION[2]}; echo w) | fdisk $disk
-    let partition_count++
-    ROOT_PARTITION_COUNT=$partition_count
-    echo "[Formatting Swap partition $disk$partition_count]"
-    ${ROOT_PARTITION[1]} $disk$partition_count
+#    (echo n; echo; echo; echo ${ROOT_PARTITION[2]}; echo w) | fdisk $disk
+    sgdisk -n 3::${ROOT_PARTITION[2]} $disk
+    echo "[Formatting Swap partition $disk'3']"
+    ${ROOT_PARTITION[1]} $disk'3'
 fi
 
 # Home Partition
 if [ $HOME_PARTITION_FLAG ]; then
-    (echo n; echo p; echo; echo; echo ${HOME_PARTITION[2]}; echo w) | fdisk $disk
-    let partition_count++
-    echo "[Formatting Home partition $disk$partition_count]"
-    HOME_PARTITION_COUNT=$partition_count
-    ${HOME_PARTITION[1]} $disk$partition_count
+#    (echo n; echo p; echo; echo; echo ${HOME_PARTITION[2]}; echo w) | fdisk $disk
+    sgdisk -n 4::${HOME_PARTITION[2]} $disk
+    echo "[Formatting Home partition $disk'4']"
+    ${HOME_PARTITION[1]} $disk'4'
 fi
 
 echo "[Mounting Partitions...]"
 if [ $ROOT_PARTITION_FLAG ]; then
-    mount $disk$ROOT_PARTITION_COUNT /mnt
-    echo "Root partition $disk$ROOT_PARTITION_COUNT mounted in /mnt"
+    mount $disk'3' /mnt
+    echo "Root partition $disk'3' mounted in /mnt"
 fi
 
 if [[ "$MODE" == "UEFI" && $BOOT_PARTITION_FLAG ]] ; then
-    mount --mkdir $disk$BOOT_PARTITION_COUNT /mnt/boot
-    echo "Boot partition $disk$BOOT_PARTITION_COUNT mounted in /mnt/boot"
+    mount --mkdir $disk'1' /mnt/boot
+    echo "Boot partition $disk'1' mounted in /mnt/boot"
 fi
 
 if [ $HOME_PARTITION_FLAG ]; then
-    mount --mkdir $disk$HOME_PARTITION_COUNT /mnt/home
-    echo "Home partition $disk$HOME_PARTITION_COUNT mounted in /mnt/home"
+    mount --mkdir $disk'4' /mnt/home
+    echo "Home partition $disk'4' mounted in /mnt/home"
 fi
 if [ $SWAP_PARTITION_FLAG ]; then
-    swapon $disk$SWAP_PARTITION_COUNT
-    echo "Swap partition $disk$SWAP_PARTITION_COUNT in swapon"
+    swapon $disk'2'
+    echo "Swap partition $disk'2' in swapon"
 fi
+
+echo "Enabling parallel downloads in pacstrap..."
+sed -i "s/#ParallelDownloads = 5/ParallelDownloads = 5/g" /etc/pacman.conf
+
 echo "[Installing base firmware and Network Manager]"
 pacstrap -K /mnt base linux linux-firmware $NETWORKMGR ${PACKAGES[@]}
 echo "[Configure the System]"
 
 echo "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
+
+if [ "$NETWORKMGR" == "networkmanager" ]; then
+    echo "Enabling nmcli in systemd"
+    arch-chroot /mnt systemctl enable NetworkManager
+fi
 
 echo "Setting Timezone..."
 arch-chroot /mnt ln -sf /usr/share/zoneinfo/$TIME /etc/localtime
