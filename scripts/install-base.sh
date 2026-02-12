@@ -46,8 +46,7 @@ echo "Boot mode: $BOOT_MODE"
 
 #-------------------Load configuration.conf config file--------------------
 echo "[Loading configuration file]"
-SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-source ./configuration.conf
+source $1
 
 # Test if the desired mode is the correct one
 if [ "$BOOT_MODE" != "$MODE" ]; then
@@ -139,6 +138,7 @@ echo "[Configure the System]"
 echo "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
 
+# To change depending on the different network managers
 if [ "$NETWORKMGR" == "networkmanager" ]; then
     echo "Enabling nmcli in systemd"
     arch-chroot /mnt systemctl enable NetworkManager
@@ -168,8 +168,9 @@ arch-chroot /mnt useradd -m -G wheel -s /bin/bash $ADMIN_USERNAME
 echo "Setting the password for user $ADMIN_USERNAME..."
 arch-chroot /mnt passwd $ADMIN_USERNAME
 echo "Adding wheel group to sudoers.."
-echo "%wheel      ALL=(ALL:ALL) ALL" >> /mnt/etc/sudoers
-
+if [ $SUDO_PASSWORD_FLAG ]; then
+    sed -i "s/# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/g" /mnt/etc/sudoers
+fi
 # Could be a good idea to add different boot loaders
 if [[ "$MODE" == "UEFI" && $BOOT_PARTITION_FLAG ]] ; then
     echo "Installing Grub..."
@@ -177,5 +178,3 @@ if [[ "$MODE" == "UEFI" && $BOOT_PARTITION_FLAG ]] ; then
     arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
     arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
 fi
-
-reboot
